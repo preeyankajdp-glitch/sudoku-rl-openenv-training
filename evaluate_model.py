@@ -16,6 +16,7 @@ from sudoku_rl.training_common import (
     parse_action,
     render_action_json,
 )
+from sudoku_rl.models import SudokuRlAction
 from sudoku_rl.train_transformers import choose_device, render_prompt
 from sudoku_rl.training_common import TrainingExample, SYSTEM_PROMPT
 
@@ -33,6 +34,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-json", default="", help="Optional path to write metrics JSON.")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"], help="Inference device.")
     parser.add_argument("--verbose", action="store_true", help="Print board, raw model output, parsed action, and reward each step.")
+    parser.add_argument(
+        "--fallback-policy",
+        default="invalid",
+        choices=["invalid", "candidate"],
+        help=(
+            "Action to use when model output cannot be parsed. "
+            "'invalid' uses a known fixed cell so parse failures are penalized. "
+            "'candidate' uses the visible-candidate helper."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -66,6 +77,16 @@ def generate_text(
     return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
 
+def invalid_parse_action(observation: Any) -> SudokuRlAction:
+    """Pick a fixed cell so parse failures are evaluated as invalid model actions."""
+
+    for row_index in range(9):
+        for column_index in range(9):
+            if observation.initial_puzzle[row_index][column_index] != 0:
+                return SudokuRlAction(row=row_index + 1, column=column_index + 1, value=1)
+    return SudokuRlAction(row=1, column=1, value=1)
+
+
 def run_episode(
     *,
     model: Any,
@@ -78,6 +99,7 @@ def run_episode(
     temperature: float,
     top_p: float,
     verbose: bool,
+    fallback_policy: str,
 ) -> dict[str, Any]:
     env = SudokuRlEnvironment()
     observation = env.reset(seed=seed, empty_boxes=empty_boxes)
@@ -112,8 +134,12 @@ def run_episode(
         source = "model"
         if action is None:
             parse_failures += 1
-            action = fallback_action(observation)
-            source = "parse_fallback"
+            if fallback_policy == "candidate":
+                action = fallback_action(observation)
+                source = "parse_fallback_candidate"
+            else:
+                action = invalid_parse_action(observation)
+                source = "parse_fallback_invalid"
 
         previous_board = observation.board_text
 
@@ -226,6 +252,7 @@ def main() -> None:
             temperature=args.temperature,
             top_p=args.top_p,
             verbose=args.verbose,
+            fallback_policy=args.fallback_policy,
         )
         episodes.append(result)
         print(

@@ -101,6 +101,10 @@ sudoku-eval \
   --output-json outputs/evals/baseline.json
 ```
 
+By default, parse failures are penalized as invalid model actions. This keeps
+baseline metrics honest: helper fallback code does not get credit for solving a
+puzzle when the model failed to emit parseable JSON.
+
 Fine-tune on oracle-generated Sudoku traces:
 
 ```bash
