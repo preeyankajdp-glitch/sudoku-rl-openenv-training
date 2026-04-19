@@ -22,6 +22,7 @@ SYSTEM_PROMPT = textwrap.dedent(
     Rules:
     - Choose one editable empty cell.
     - The editable empty cells are listed in the user prompt; choose only one of those row and column pairs.
+    - If the previous action was invalid, do not repeat the same row, column, and value.
     - Choose a value from 1 to 9.
     - Do not include markdown, explanations, code fences, or extra text.
     """
@@ -122,6 +123,7 @@ def build_user_prompt(
         {history_block}
 
         Return the next move as JSON only. The row and column must be one of the listed editable empty cells.
+        If a recent action was invalid, choose a different value or a different listed cell.
         """
     ).strip()
 

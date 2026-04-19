@@ -35,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"], help="Inference device.")
     parser.add_argument("--verbose", action="store_true", help="Print board, raw model output, parsed action, and reward each step.")
     parser.add_argument(
+        "--repeat-guard",
+        action="store_true",
+        help="Repair actions that exactly repeat a previously invalid row, column, and value.",
+    )
+    parser.add_argument(
         "--fallback-policy",
         default="invalid",
         choices=["invalid", "candidate"],
@@ -100,6 +105,7 @@ def run_episode(
     top_p: float,
     verbose: bool,
     fallback_policy: str,
+    repeat_guard: bool,
 ) -> dict[str, Any]:
     env = SudokuRlEnvironment()
     observation = env.reset(seed=seed, empty_boxes=empty_boxes)
@@ -108,6 +114,8 @@ def run_episode(
     valid_moves = 0
     model_moves = 0
     fallback_moves = 0
+    repaired_moves = 0
+    invalid_actions: set[tuple[int | None, int | None, int | None]] = set()
     final_status = observation.status
     raw_score = observation.score
 
@@ -141,6 +149,12 @@ def run_episode(
                 action = invalid_parse_action(observation)
                 source = "parse_fallback_invalid"
 
+        action_key = (action.row, action.column, action.value)
+        if repeat_guard and source == "model" and action_key in invalid_actions:
+            action = fallback_action(observation)
+            action_key = (action.row, action.column, action.value)
+            source = "repeat_guard_candidate"
+
         previous_board = observation.board_text
 
         observation = env.step(action)
@@ -148,8 +162,13 @@ def run_episode(
             valid_moves += 1
         if source == "model":
             model_moves += 1
+        elif source == "repeat_guard_candidate":
+            repaired_moves += 1
+            fallback_moves += 1
         else:
             fallback_moves += 1
+        if observation.move_valid is False:
+            invalid_actions.add(action_key)
 
         history.append(
             f"step={step} source={source} action={render_action_json(action)} "
@@ -190,6 +209,7 @@ def run_episode(
         "valid_moves": valid_moves,
         "model_moves": model_moves,
         "fallback_moves": fallback_moves,
+        "repaired_moves": repaired_moves,
         "parse_failures": parse_failures,
     }
 
@@ -212,6 +232,11 @@ def summarize(model_name: str, empty_boxes: int, episodes: list[dict[str, Any]])
         ),
         "parse_failure_rate": (
             sum(episode["parse_failures"] for episode in episodes) / total_steps
+            if total_steps
+            else 0.0
+        ),
+        "repair_rate": (
+            sum(episode.get("repaired_moves", 0) for episode in episodes) / total_steps
             if total_steps
             else 0.0
         ),
@@ -253,6 +278,7 @@ def main() -> None:
             top_p=args.top_p,
             verbose=args.verbose,
             fallback_policy=args.fallback_policy,
+            repeat_guard=args.repeat_guard,
         )
         episodes.append(result)
         print(
