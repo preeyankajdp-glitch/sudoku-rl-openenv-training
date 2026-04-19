@@ -32,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-p", type=float, default=0.95, help="Nucleus sampling value.")
     parser.add_argument("--output-json", default="", help="Optional path to write metrics JSON.")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"], help="Inference device.")
+    parser.add_argument("--verbose", action="store_true", help="Print board, raw model output, parsed action, and reward each step.")
     return parser.parse_args()
 
 
@@ -76,6 +77,7 @@ def run_episode(
     max_new_tokens: int,
     temperature: float,
     top_p: float,
+    verbose: bool,
 ) -> dict[str, Any]:
     env = SudokuRlEnvironment()
     observation = env.reset(seed=seed, empty_boxes=empty_boxes)
@@ -113,6 +115,8 @@ def run_episode(
             action = fallback_action(observation)
             source = "parse_fallback"
 
+        previous_board = observation.board_text
+
         observation = env.step(action)
         if observation.move_valid:
             valid_moves += 1
@@ -125,6 +129,22 @@ def run_episode(
             f"step={step} source={source} action={render_action_json(action)} "
             f"reward={observation.reward:+.2f} status={observation.status}"
         )
+
+        if verbose:
+            print(f"\n[STEP DETAIL] seed={seed} step={step}", flush=True)
+            print("[OBSERVATION BOARD]", flush=True)
+            print(previous_board, flush=True)
+            print("[MODEL RAW OUTPUT]", flush=True)
+            print(raw_text or "<empty>", flush=True)
+            print("[ACTION USED]", flush=True)
+            print(f"source={source} action={render_action_json(action)}", flush=True)
+            print("[ENV RESULT]", flush=True)
+            print(
+                f"reward={observation.reward:+.2f} status={observation.status} "
+                f"move_valid={observation.move_valid} score={observation.score} "
+                f"message={observation.message}",
+                flush=True,
+            )
         final_status = observation.status
         raw_score = observation.score
 
@@ -205,6 +225,7 @@ def main() -> None:
             max_new_tokens=args.max_new_tokens,
             temperature=args.temperature,
             top_p=args.top_p,
+            verbose=args.verbose,
         )
         episodes.append(result)
         print(

@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=2e-5, help="AdamW learning rate.")
     parser.add_argument("--max-length", type=int, default=2048, help="Maximum tokenized sequence length.")
     parser.add_argument("--max-examples", type=int, default=0, help="Optional cap for quick smoke runs.")
+    parser.add_argument("--preview-examples", type=int, default=0, help="Print the first N oracle examples before training.")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"], help="Training device.")
     return parser.parse_args()
 
@@ -60,6 +61,17 @@ def render_prompt(tokenizer: Any, example: TrainingExample) -> str:
         f"User:\n{example.user_prompt}\n\n"
         "Assistant:\n"
     )
+
+
+def preview_examples(examples: list[TrainingExample], count: int) -> None:
+    for index, example in enumerate(examples[:count], start=1):
+        print(f"\n[PREVIEW] example={index}", flush=True)
+        print("[SYSTEM]", flush=True)
+        print(example.system_prompt, flush=True)
+        print("[OBSERVATION PROMPT]", flush=True)
+        print(example.user_prompt, flush=True)
+        print("[ORACLE ACTION]", flush=True)
+        print(example.response, flush=True)
 
 
 class PromptResponseDataset:
@@ -140,6 +152,9 @@ def main() -> None:
         raise RuntimeError("No training examples were generated.")
 
     print(f"[DATA] examples={len(examples)} empty_boxes={args.empty_boxes}", flush=True)
+    if args.preview_examples > 0:
+        preview_examples(examples, args.preview_examples)
+
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
     if tokenizer.eos_token is None:
         tokenizer.eos_token = tokenizer.pad_token or ""
