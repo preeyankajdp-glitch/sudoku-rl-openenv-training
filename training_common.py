@@ -21,6 +21,7 @@ SYSTEM_PROMPT = textwrap.dedent(
 
     Rules:
     - Choose one editable empty cell.
+    - The editable empty cells are listed in the user prompt; choose only one of those row and column pairs.
     - Choose a value from 1 to 9.
     - Do not include markdown, explanations, code fences, or extra text.
     """
@@ -45,6 +46,48 @@ def render_action_json(action: SudokuRlAction) -> str:
     )
 
 
+def visible_candidates(board: list[list[int]], row_index: int, column_index: int) -> list[int]:
+    """Return Sudoku candidates that do not violate currently visible values."""
+
+    if board[row_index][column_index] != 0:
+        return []
+
+    used_values = set(board[row_index])
+    used_values.update(board[current_row][column_index] for current_row in range(9))
+
+    box_row = (row_index // 3) * 3
+    box_column = (column_index // 3) * 3
+    for current_row in range(box_row, box_row + 3):
+        for current_column in range(box_column, box_column + 3):
+            used_values.add(board[current_row][current_column])
+
+    return [value for value in range(1, 10) if value not in used_values]
+
+
+def editable_cells_block(observation: SudokuRlObservation) -> str:
+    """Render editable empty cells using 1-based coordinates."""
+
+    lines: list[str] = []
+    candidate_board = [row[:] for row in observation.board]
+    for row_index, column_index in observation.invalid_cells:
+        if 0 <= row_index < 9 and 0 <= column_index < 9:
+            candidate_board[row_index][column_index] = 0
+
+    for row_index in range(9):
+        for column_index in range(9):
+            if observation.initial_puzzle[row_index][column_index] != 0:
+                continue
+            if observation.board[row_index][column_index] != 0 and [row_index, column_index] not in observation.invalid_cells:
+                continue
+            candidates = visible_candidates(candidate_board, row_index, column_index)
+            candidates_text = ", ".join(str(value) for value in candidates) if candidates else "none"
+            lines.append(
+                f"- row={row_index + 1}, column={column_index + 1}, visible_candidates=[{candidates_text}]"
+            )
+
+    return "\n".join(lines) if lines else "None"
+
+
 def build_user_prompt(
     *,
     step: int,
@@ -55,6 +98,7 @@ def build_user_prompt(
 
     history_block = "\n".join((history or [])[-8:]) if history else "None"
     invalid_block = observation.invalid_cells if observation.invalid_cells else "[]"
+    editable_block = editable_cells_block(observation)
     return textwrap.dedent(
         f"""
         Step: {step}
@@ -71,10 +115,13 @@ def build_user_prompt(
         Current board, where . means empty:
         {observation.board_text}
 
+        Editable empty cells and visible candidates:
+        {editable_block}
+
         Recent actions:
         {history_block}
 
-        Return the next move as JSON only.
+        Return the next move as JSON only. The row and column must be one of the listed editable empty cells.
         """
     ).strip()
 
@@ -102,9 +149,9 @@ def parse_action(text: str) -> SudokuRlAction | None:
         if isinstance(parsed, dict):
             candidates.append(parsed)
 
-    row_match = re.search(r'"?row"?\s*[:=]\s*([1-9])', cleaned, flags=re.IGNORECASE)
-    column_match = re.search(r'"?(?:column|col)"?\s*[:=]\s*([1-9])', cleaned, flags=re.IGNORECASE)
-    value_match = re.search(r'"?(?:value|number)"?\s*[:=]\s*([1-9])', cleaned, flags=re.IGNORECASE)
+    row_match = re.search(r'"?row"?\s*[:=]\s*([1-9])\b', cleaned, flags=re.IGNORECASE)
+    column_match = re.search(r'"?(?:column|col)"?\s*[:=]\s*([1-9])\b', cleaned, flags=re.IGNORECASE)
+    value_match = re.search(r'"?(?:value|number)"?\s*[:=]\s*([1-9])\b', cleaned, flags=re.IGNORECASE)
     if row_match and column_match and value_match:
         candidates.append(
             {
@@ -160,10 +207,20 @@ def oracle_action(observation: SudokuRlObservation, solution_board: list[list[in
 def fallback_action(observation: SudokuRlObservation) -> SudokuRlAction:
     """Return a deterministic legal-shaped action when model output is unparseable."""
 
+    candidate_board = [row[:] for row in observation.board]
+    for row_index, column_index in observation.invalid_cells:
+        if 0 <= row_index < 9 and 0 <= column_index < 9:
+            candidate_board[row_index][column_index] = 0
+
     for row_index in range(9):
         for column_index in range(9):
-            if observation.initial_puzzle[row_index][column_index] == 0:
-                return SudokuRlAction(row=row_index + 1, column=column_index + 1, value=1)
+            if observation.initial_puzzle[row_index][column_index] != 0:
+                continue
+            if observation.board[row_index][column_index] != 0 and [row_index, column_index] not in observation.invalid_cells:
+                continue
+            candidates = visible_candidates(candidate_board, row_index, column_index)
+            value = candidates[0] if candidates else 1
+            return SudokuRlAction(row=row_index + 1, column=column_index + 1, value=value)
     return SudokuRlAction(row=1, column=1, value=1)
 
 
