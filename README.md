@@ -70,11 +70,74 @@ with SudokuRlEnv(base_url="http://localhost:8000") as env:
 ```bash
 cd sudoku_rl
 uv sync
-pytest
+uv run --extra dev pytest
+uv run openenv validate .
 uv run --project . server
 ```
 
 The custom UI is available at `/web` and mirrors the original Sudoku Gradio layout while talking to the OpenEnv backend.
+
+## Training And Before/After Evaluation
+
+This repo keeps Sudoku as the OpenEnv environment and uses plain PyTorch plus
+Hugging Face Transformers for model evaluation and supervised fine-tuning. The
+training script creates oracle trajectories from the local environment, then
+teaches a causal language model to emit the next move as JSON.
+
+Install the training extras in your Lightning AI Studio or notebook terminal:
+
+```bash
+cd sudoku_rl
+pip install -e ".[train]"
+```
+
+Run a baseline evaluation before training:
+
+```bash
+sudoku-eval \
+  --model-name Qwen/Qwen3-0.6B \
+  --episodes 20 \
+  --empty-boxes 35 \
+  --output-json outputs/evals/baseline.json
+```
+
+Fine-tune on oracle-generated Sudoku traces:
+
+```bash
+sudoku-train \
+  --model-name Qwen/Qwen3-0.6B \
+  --episodes 128 \
+  --empty-boxes 35 \
+  --epochs 1 \
+  --output-dir outputs/checkpoints/sudoku-sft
+```
+
+Evaluate the trained checkpoint on the same benchmark shape:
+
+```bash
+sudoku-eval \
+  --model-name outputs/checkpoints/sudoku-sft \
+  --episodes 20 \
+  --empty-boxes 35 \
+  --output-json outputs/evals/trained.json
+```
+
+Compare the before and after metrics:
+
+```bash
+sudoku-compare outputs/evals/baseline.json outputs/evals/trained.json
+```
+
+The main metrics are:
+
+- `success_rate`: fraction of episodes solved.
+- `avg_normalized_score`: score normalized to roughly 0..1.
+- `valid_move_rate`: fraction of generated actions accepted by the environment.
+- `parse_failure_rate`: fraction of model generations that could not be parsed as action JSON.
+
+This is supervised fine-tuning from an oracle, not PPO/GRPO yet. It is the
+fastest first step for checking whether the model learns the action format and
+Sudoku move policy before adding a full RL update loop.
 
 ## Lightning AI / Notebook Usage
 
@@ -96,4 +159,11 @@ If you prefer `uv`:
 ```bash
 cd sudoku_rl
 uv sync
+```
+
+For training in Lightning AI, prefer:
+
+```bash
+cd sudoku_rl
+pip install -e ".[train]"
 ```

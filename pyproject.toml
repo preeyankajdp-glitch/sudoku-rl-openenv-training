@@ -35,11 +35,19 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
 ]
+train = [
+    "torch>=2.2.0",
+    "transformers>=4.40.0",
+    "accelerate>=0.29.0",
+]
 
 [project.scripts]
 # Server entry point - enables running via: uv run --project . server
 # or: python -m sudoku_rl.server.app
 server = "sudoku_rl.server.app:main"
+sudoku-train = "sudoku_rl.train_transformers:main"
+sudoku-eval = "sudoku_rl.evaluate_model:main"
+sudoku-compare = "sudoku_rl.compare_eval_runs:main"
 
 [tool.setuptools]
 include-package-data = true
