@@ -48,6 +48,7 @@ server = "sudoku_rl.server.app:main"
 sudoku-train = "sudoku_rl.train_transformers:main"
 sudoku-eval = "sudoku_rl.evaluate_model:main"
 sudoku-compare = "sudoku_rl.compare_eval_runs:main"
+sudoku-playback-ui = "sudoku_rl.playback_ui:main"
 
 [tool.setuptools]
 include-package-data = true

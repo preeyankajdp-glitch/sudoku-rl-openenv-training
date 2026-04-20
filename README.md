@@ -132,6 +132,16 @@ Compare the before and after metrics:
 sudoku-compare outputs/evals/baseline.json outputs/evals/trained.json
 ```
 
+Launch a side-by-side playback UI:
+
+```bash
+sudoku-playback-ui --host 0.0.0.0 --port 7860
+```
+
+Open the exposed port in Lightning AI, enter the baseline and trained model
+paths, and click `Generate Playback` to watch both agents place numbers on the
+same puzzle.
+
 The main metrics are:
 
 - `success_rate`: fraction of episodes solved.
