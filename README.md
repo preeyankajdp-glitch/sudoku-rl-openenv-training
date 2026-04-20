@@ -153,6 +153,86 @@ This is supervised fine-tuning from an oracle, not PPO/GRPO yet. It is the
 fastest first step for checking whether the model learns the action format and
 Sudoku move policy before adding a full RL update loop.
 
+## Resume In Lightning AI
+
+Clone the repo and install the training commands:
+
+```bash
+git clone https://github.com/preeyankajdp-glitch/sudoku-rl-openenv-training.git
+cd sudoku-rl-openenv-training
+pip install -U pip
+pip install -e ".[train,dev]"
+```
+
+If you downloaded the trained checkpoint archive, upload it into the repo folder
+and restore it:
+
+```bash
+tar -xzf sudoku-20-to-35-clean.tar.gz
+```
+
+Check the environment and package:
+
+```bash
+pytest -q
+openenv validate .
+```
+
+Run an honest baseline on 35-empty-cell puzzles:
+
+```bash
+sudoku-eval \
+  --model-name Qwen/Qwen3-0.6B \
+  --episodes 5 \
+  --empty-boxes 35 \
+  --max-steps 45 \
+  --device cuda \
+  --output-json outputs/evals/baseline-35-honest.json
+```
+
+Evaluate the curriculum-trained checkpoint:
+
+```bash
+sudoku-eval \
+  --model-name outputs/checkpoints/sudoku-20-to-35-clean \
+  --episodes 5 \
+  --empty-boxes 35 \
+  --max-steps 45 \
+  --device cuda \
+  --output-json outputs/evals/sudoku-20-to-35-clean-pure.json
+```
+
+Compare before and after:
+
+```bash
+sudoku-compare \
+  outputs/evals/baseline-35-honest.json \
+  outputs/evals/sudoku-20-to-35-clean-pure.json
+```
+
+Watch one solved trained episode step by step:
+
+```bash
+sudoku-eval \
+  --model-name outputs/checkpoints/sudoku-20-to-35-clean \
+  --episodes 1 \
+  --empty-boxes 35 \
+  --max-steps 45 \
+  --device cuda \
+  --seed 1001 \
+  --verbose
+```
+
+Launch the optional side-by-side playback UI:
+
+```bash
+sudoku-playback-ui --host 0.0.0.0 --port 7860
+```
+
+In Lightning AI, open the exposed `7860` port. Use `Qwen/Qwen3-0.6B` as the
+baseline model, `outputs/checkpoints/sudoku-20-to-35-clean` as the trained
+model, `35` empty cells, seed `1001`, and `45` max steps.
+
 ## Lightning AI / Notebook Usage
 
 If your notebook kernel starts inside the `sudoku_rl` folder, Python does not
